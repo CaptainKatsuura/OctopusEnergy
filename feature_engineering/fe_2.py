@@ -1,6 +1,7 @@
 import pandas as pd
 import argparse
 from sqlalchemy import create_engine
+from azure.storage.blob import ContainerClient
 
 def main():
     # Hard-coded date range
@@ -20,8 +21,8 @@ def main():
     args = parser.parse_args()
     
     # Connect to postgres
-    connection_string = f"postgresql://{args.user}:{args.password}@{args.host}:{args.port}/{args.dbname}"
-    engine = create_engine(connection_string)
+    pg_connection_string = f"postgresql://{args.user}:{args.password}@{args.host}:{args.port}/{args.dbname}"
+    engine = create_engine(pg_connection_string)
     
     # Select data - aggregate hourly consumption and join with weather
     query = f"""
@@ -54,7 +55,14 @@ def main():
     df = df.dropna()
     
     # Write to temporary location
-    df.to_csv(args.output_path, index=False)
+    output = df.to_csv (index_label="idx", encoding = "utf-8")
+    #print(output)
+    #print(args.azure_blob_conn_str)
+    blob_block = ContainerClient.from_connection_string(
+    conn_str=args.azure_blob_conn_str,
+    container_name='octopusenergy'
+    )
+    blob_block.upload_blob(args.output_path, output, overwrite=True, encoding='utf-8')
     print(f"Feature engineering complete. Data saved to {args.output_path}")
 
 if __name__ == "__main__":

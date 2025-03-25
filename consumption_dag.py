@@ -6,7 +6,7 @@ import pandas as pd
 import openmeteo_requests
 import requests_cache
 import os
-import random
+import shlex
 from retry_requests import retry
 from airflow.decorators import dag, task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
@@ -184,11 +184,14 @@ def octopus_consumption():
     
     pg_conn = PostgresHook.get_connection("OctopusEnergy_PG")
     wasb_hook = WasbHook(wasb_conn_id="azure_blob_dev")
-    wasb_conn = wasb_hook.get_connection(wasb_hook.conn_id).extra_dejson.connection_string
-
+    wasb_conn = wasb_hook.get_connection(wasb_hook.conn_id).extra_dejson
+    completed_fe_scripts = [f.split('/')[1].split('.')[0] for f in wasb_hook.get_blobs_list('octopusenergy','fe/fe')]
+    fe_scripts = [f for f in fe_scripts if f.split('.')[0] not in completed_fe_scripts]
+    
     @task.bash(task_id="feature_engineering")
     def fe_task(PG_HOST, PG_PORT, PG_DBNAME, PG_USER, PG_PASSWORD, fe_dir, fe_script, azure_blob_conn_str):
-        return f"python {os.path.join(fe_dir, fe_script)} --host {PG_HOST} --port {PG_PORT} --dbname {PG_DBNAME} --user {PG_USER} --password {PG_PASSWORD} --output_path {fe_script.replace('.py', '.csv')} --azure_blob_conn_str {azure_blob_conn_str}"
+        azure_blob_conn_str = shlex.quote(azure_blob_conn_str)
+        return f"python {os.path.join(fe_dir, fe_script)} --host {PG_HOST} --port {PG_PORT} --dbname {PG_DBNAME} --user {PG_USER} --password {PG_PASSWORD} --output_path fe/{fe_script.replace('.py', '.csv')} --azure_blob_conn_str {azure_blob_conn_str}"
 
     feature_engineering = fe_task.partial(
         PG_HOST=pg_conn.host,
@@ -197,7 +200,7 @@ def octopus_consumption():
         PG_USER=pg_conn.login,
         PG_PASSWORD=pg_conn.password,
         fe_dir = fe_scripts_dir,
-        azure_blob_conn_str = wasb_conn.get("conn_str")
+        azure_blob_conn_str = wasb_conn['connection_string']
     ).expand(
         fe_script=fe_scripts
     )
