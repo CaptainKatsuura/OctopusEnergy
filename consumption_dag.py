@@ -5,9 +5,12 @@ import requests
 import pandas as pd
 import openmeteo_requests
 import requests_cache
+import os
+import random
 from retry_requests import retry
 from airflow.decorators import dag, task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.providers.microsoft.azure.hooks.wasb import WasbHook
 from datetime import datetime
 from requests import Response 
 from airflow.models import Variable
@@ -111,7 +114,7 @@ def octopus_consumption():
         )}
 
         hourly_data["temperature_2m"] = hourly_temperature_2m
-        hourly_data['rainfall'] = hourly_rainfall
+        hourly_data['precipitation'] = hourly_rainfall
         hourly_data = pd.DataFrame(data = hourly_data)
         postgres_hook = PostgresHook(postgres_conn_id="OctopusEnergy_PG")
         dtype_dic = {'time_start': types.TIMESTAMP(timezone=False), 'temperature_2m': types.DECIMAL(10,5),'precipitation': types.DECIMAL(10,5)}
@@ -151,7 +154,7 @@ def octopus_consumption():
         hourly_temperature_2m = hourly.Variables(0).ValuesAsNumpy()
         hourly_precipitation = hourly.Variables(1).ValuesAsNumpy()
 
-        hourly_data = {"date": pd.date_range(
+        hourly_data = {"time_start": pd.date_range(
             start = pd.to_datetime(hourly.Time(), unit = "s", utc = True),
             end = pd.to_datetime(hourly.TimeEnd(), unit = "s", utc = True),
             freq = pd.Timedelta(seconds = hourly.Interval()),
@@ -175,10 +178,41 @@ def octopus_consumption():
         
 
     # run FE -- select historical data
-        # define date range
-    training_start_date, training_end_date = '2024-01-01','2024-12-31'
-        # run fe script
-        
+    # Dynamically create tasks for each feature engineering script
+    fe_scripts_dir = os.path.join(os.path.abspath("/opt/airflow"),"dags", "PortfolioProjects", "OctopusEnergy", "feature_engineering")
+    fe_scripts = [f for f in os.listdir(fe_scripts_dir) if f.startswith("fe_") and f.endswith(".py")]
+    
+    pg_conn = PostgresHook.get_connection("OctopusEnergy_PG")
+    wasb_hook = WasbHook(wasb_conn_id="azure_blob_dev")
+    wasb_conn = wasb_hook.get_connection(wasb_hook.conn_id).extra_dejson.connection_string
+
+    @task.bash(task_id="feature_engineering")
+    def fe_task(PG_HOST, PG_PORT, PG_DBNAME, PG_USER, PG_PASSWORD, fe_dir, fe_script, azure_blob_conn_str):
+        return f"python {os.path.join(fe_dir, fe_script)} --host {PG_HOST} --port {PG_PORT} --dbname {PG_DBNAME} --user {PG_USER} --password {PG_PASSWORD} --output_path {fe_script.replace('.py', '.csv')} --azure_blob_conn_str {azure_blob_conn_str}"
+
+    feature_engineering = fe_task.partial(
+        PG_HOST=pg_conn.host,
+        PG_PORT=str(pg_conn.port),
+        PG_DBNAME=pg_conn.schema,
+        PG_USER=pg_conn.login,
+        PG_PASSWORD=pg_conn.password,
+        fe_dir = fe_scripts_dir,
+        azure_blob_conn_str = wasb_conn.get("conn_str")
+    ).expand(
+        fe_script=fe_scripts
+    )
+
+    '''@task(task_id="generate_file")
+    def upload_to_azure_blob(endpoint: str) -> None:
+        # Instanstiate
+        azurehook = WasbHook(wasb_conn_id="azure_blob_dev")
+        # Create sample data
+        wasb_conn = str(azurehook.get_connection(azurehook.conn_id).extra_dejson)
+
+        # Take string, upload to S3 using predefined method
+        azurehook.load_string(string_data=wasb_conn, container_name="octopusenergy", blob_name=f"{endpoint}.txt")
+
+    blob_test = upload_to_azure_blob(endpoint="test")'''
     # train sarimax model
         # read FE data
         # forward selection
@@ -192,6 +226,6 @@ def octopus_consumption():
     get_latest_octopus_electric_consumption >> extract_electric_consumption() >> sp_merge_electric_consumption_staging
     get_latest_historic_weather >> pull_historic_weather_data() >> sp_merge_historic_weather_staging
     pull_forecast_weather_data() >> sp_merge_forecasted_weather_staging
-
+    [sp_merge_electric_consumption_staging, sp_merge_historic_weather_staging, sp_merge_forecasted_weather_staging] >> feature_engineering
 
 octopus_consumption()
