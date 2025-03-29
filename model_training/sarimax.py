@@ -1,11 +1,9 @@
 import pygad
 import numpy as np
-
+from sktime.forecasting.sarimax import SARIMAX
+from sktime.split import ExpandingWindowSplitter
 from sklearn.model_selection import train_test_split, cross_val_score
-from src.learner_params import target_column, model_features
 
-from sklearn.datasets import load_breast_cancer
-from sklearn.metrics import roc_auc_score
 
 from numpy.random import RandomState
 
@@ -21,44 +19,53 @@ def main():
     
     parser.add_argument('--output_path', required=True, help='Path to save the processed data')
     parser.add_argument('--azure_blob_conn_str', required=True, help='azure_blob_conn_str')
+    parser.add_argument('--target', required=True, help='y variable')
     
     args = parser.parse_args()
     seed = 1234
     state = RandomState(seed)
-
+    blob_block = ContainerClient.from_connection_string(
+    conn_str=args.azure_blob_conn_str,
+    container_name='octopusenergy'
+    )
+    #blob_block.upload_blob(args.output_path, output, overwrite=True, encoding='utf-8')
     #read data
-    bc = load_breast_cancer()
+    df = blob_block.download_blob(args.output_path).readall()
+    df = pd.read_csv(df, index_col=0)
 
-    #prep model
-    bst = lgbm(random_state = seed)
-
-    function_inputs = bc.feature_names
-
-
-    X, y = bc.data,bc.target
-    X = pd.DataFrame(X, columns=bc.feature_names)
-    X_train, X_test, y_train, y_test = train_test_split(X,
-                                                        y,
-                                                        random_state=seed)
+    featurenames = [i for i in df.columns if i not in [args.target, 'hour_start']]
+    X, y = df[featurenames], df.loc[:,args.target]
+    
+    
+    #split_index = int(len(X) * 0.5)  # 50% for training, 20% for testing
+    X_train, X_test = X.loc[X['hour_start'].dt.year==2023,], X.loc[X['hour_start'].dt.year==2024]
+    y_train, y_test = y.loc[X['hour_start'].dt.year==2023], y.loc[X['hour_start'].dt.year==2024]
 
 
 
     def fitness_func(ga_instance, solution, solution_idx):
-        mask = np.array(solution, dtype = bool)
-        selected_features = np.array(bc.feature_names)[mask]
+        #prep model
+        order = solution[:3]
+        seasonal_order = solution[3:6]
+        features = solution[6:]
+        mask = np.array(features, dtype = bool)
+        
+        selected_features = np.array(featurenames)[mask]
         X_tmp = X_train.loc[:,selected_features]
-        score = cross_val_score(bst, X_tmp, y_train, scoring="rmse", cv = 5).mean()
+        forecaster = SARIMAX(order=order, seasonal_order=seasonal_order)
+        
+        score = cross_val_score(forecaster, X_tmp, y_train, scoring="rmse", cv = 5).mean()
         fitness = score
         return fitness
 
 
 
-    m = len(bc.feature_names)
+    m = len(featurenames)
     fitness_function = fitness_func
     # initialize with a random subset of features
     gene_space = list(state.randint(0, 8, 3)) + list(state.randint(0, 2, m))
 
-    num_generations = 30
+    num_generations = 100
     num_parents_mating = 2
 
     sol_per_pop = 2
@@ -92,17 +99,24 @@ def main():
     print("Fitness value of the best solution = {solution_fitness}".format(solution_fitness=solution_fitness))
     print(f"Number of features selected = {sum(solution)}")
 
+    order = solution[:3]
+    seasonal_order = solution[3:6]
+    features = solution[6:]
+    mask = np.array(features, dtype = bool)
+    
+    selected_features = np.array(featurenames)[mask]
+    forecaster = SARIMAX(order=order, seasonal_order=seasonal_order)
+    #model = forecaster.fit(X_train, y_train)
+    #print(f"Performance with all the features:")
+    #model.score(X_test, y_test)
 
 
-
-    model = bst.fit(X_train, y_train)
-    print(f"Performance with all the features:")
-    model.score(X_test, y_test)
-
-
-    model = bst.fit(X_train.loc[:,selected_], y_train)
-    print(f"Performance with subset of features:")
-    model.score(X_test.loc[:,selected_], y_test)
+    model = forecaster.fit(X_train.loc[:,selected_features], y_train, fh=14)
+    cv = ExpandingWindowSplitter(
+        step_length=1, fh=list(range(1,15,1)), initial_window=1
+    )
+    y_pred = model.update_predict(X=X_test.loc[:,selected_features], y=y_test, cv=cv, update_params=False, reset_forecaster=False)
+    print(y_pred)
 
 if __name__ == "__main__":
     main()

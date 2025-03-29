@@ -5,7 +5,7 @@ from azure.storage.blob import ContainerClient
 
 def main():
     # Hard-coded date range
-    start_date = '2024-01-01'
+    start_date = '2023-01-01'
     end_date = '2024-12-31'
     
     # Parse command line arguments
