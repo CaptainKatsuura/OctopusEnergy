@@ -48,8 +48,6 @@ def octopus_consumption():
         serial = Variable.get('serial')
         url = f'https://api.octopus.energy/v1/electricity-meter-points/{mpan}/meters/{serial}/consumption/'
         api_key = Variable.get('octupus_api_key')
-        print('api_key')
-        logging.info(api_key)
         params = {'page_size': '25000', 'period_from': max_interval_start}
         responses = []
         while True:
