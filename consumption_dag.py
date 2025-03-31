@@ -44,8 +44,8 @@ def octopus_consumption():
         max_interval_start = datetime(2024, 1, 1) if max_interval_start is None else max_interval_start
         max_interval_start = max_interval_start.strftime("%Y-%m-%dT%H:%M:%S")
         print(max_interval_start)
-        mpan = '1200062428490'
-        serial = '19L2432124'
+        mpan = Variable.get('mpan')
+        serial = Variable.get('serial')
         url = f'https://api.octopus.energy/v1/electricity-meter-points/{mpan}/meters/{serial}/consumption/'
         api_key = Variable.get('octupus_api_key')
         print('api_key')
