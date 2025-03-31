@@ -107,7 +107,7 @@ def main():
 
     # Save predictions to Azure Blob
     y_pred_df = pd.DataFrame(y_pred, index=y_test.index, columns=['Prediction'])
-    y_pred['test'] = y_test.loc[:,args.target]
+    y_pred_df['test'] = y_test.loc[:,args.target]
     y_pred_csv = y_pred_df.to_csv(index=True)
     blob_block.upload_blob(f'models/{args.output_path}.csv', y_pred_csv, overwrite=True, encoding='utf-8')
 
