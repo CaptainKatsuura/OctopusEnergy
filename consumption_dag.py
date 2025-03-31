@@ -203,32 +203,65 @@ def octopus_consumption():
         azure_blob_conn_str = wasb_conn['connection_string']
     ).expand(
         fe_script=fe_scripts
+    )   
+    
+    @task(trigger_rule="none_failed")
+    def get_unmodeled_fe_data():
+        wasb_hook = WasbHook(wasb_conn_id="azure_blob_dev")
+        
+        # Step 1: Get model script file names without extension or folder name
+        model_scripts_dir = os.path.join(os.path.abspath("/opt/airflow"), "dags", "PortfolioProjects", "OctopusEnergy", "model_training")
+        model_scripts = [os.path.splitext(f)[0] for f in os.listdir(model_scripts_dir) if f.endswith(".py")]
+        print(f"Model scripts: {model_scripts}")
+        
+        # Step 2: Get the final subfolder and filename without the extension of every file in models/ in blob storage
+        model_files = wasb_hook.get_blobs_list(container_name="octopusenergy", prefix="models/")
+        existing_model_paths = [os.path.splitext("/".join(f.split('/')[-2:]))[0] for f in model_files]
+        print(f"Existing model paths: {existing_model_paths}")
+        
+        # Step 3: Get every unique filename with no extension in blob storage fe/
+        fe_files = wasb_hook.get_blobs_list(container_name="octopusenergy", prefix="fe/")
+        fe_file_names = list(set([os.path.splitext(f.split('/')[-1])[0] for f in fe_files]))
+        print(f"Feature engineering file names: {fe_file_names}")
+        
+        # Map each model script to each feature engineering file to create script_name/fe_name
+        model_fe_combinations = [f"{model}/{fe}" for model in model_scripts for fe in fe_file_names]
+        print(f"Model-feature combinations: {model_fe_combinations}")
+        
+        # Step 4: Filter feature engineering files to only include ones that don't exist in the output of step 2
+        unmodeled_files = [f for f in model_fe_combinations if f not in existing_model_paths]
+        print(f"Unmodeled files: {unmodeled_files}")
+        
+        return unmodeled_files
+    
+    unmodeled_data = get_unmodeled_fe_data()
+    @task.bash(task_id="train_models", trigger_rule="none_failed")
+    def train_sarimax_task(output_path, azure_blob_conn_str, target):
+        # Escape the Azure connection string to handle special characters
+        escaped_azure_blob_conn_str = shlex.quote(azure_blob_conn_str)
+        return (
+            f"python {os.path.join(os.path.abspath('/opt/airflow'), 'dags', 'PortfolioProjects', 'OctopusEnergy', 'model_training', f'{output_path.split('/')[0]}.py')} "
+            f"--output_path {output_path} "
+            f"--azure_blob_conn_str {escaped_azure_blob_conn_str} "
+            f"--target {target}"
+        )
+
+    # Example usage in the DAG
+    
+    sarimax_task = train_sarimax_task.partial(
+        
+        azure_blob_conn_str=wasb_conn['connection_string'],  # Pass the Azure connection string
+        target="consumption"  # Replace with the target variable name
+    ).expand(
+        output_path=unmodeled_data,  # Pass the list of input paths for each feature engineering script
     )
-
-    '''@task(task_id="generate_file")
-    def upload_to_azure_blob(endpoint: str) -> None:
-        # Instanstiate
-        azurehook = WasbHook(wasb_conn_id="azure_blob_dev")
-        # Create sample data
-        wasb_conn = str(azurehook.get_connection(azurehook.conn_id).extra_dejson)
-
-        # Take string, upload to S3 using predefined method
-        azurehook.load_string(string_data=wasb_conn, container_name="octopusenergy", blob_name=f"{endpoint}.txt")
-
-    blob_test = upload_to_azure_blob(endpoint="test")'''
-    # train sarimax model
-        # read FE data
-        # forward selection
-            # write model metadata to sql 1 model many features
-            # write train/test result to sql
-            # store model as file locally/store model params
-            # iterate through all features
         
     # live predict all models
 
     get_latest_octopus_electric_consumption >> extract_electric_consumption() >> sp_merge_electric_consumption_staging
     get_latest_historic_weather >> pull_historic_weather_data() >> sp_merge_historic_weather_staging
     pull_forecast_weather_data() >> sp_merge_forecasted_weather_staging
-    [sp_merge_electric_consumption_staging, sp_merge_historic_weather_staging, sp_merge_forecasted_weather_staging] >> feature_engineering
+    [sp_merge_electric_consumption_staging, sp_merge_historic_weather_staging, sp_merge_forecasted_weather_staging] >> feature_engineering 
+    feature_engineering >> unmodeled_data >> sarimax_task
 
 octopus_consumption()

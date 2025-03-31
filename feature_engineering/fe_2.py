@@ -5,8 +5,8 @@ from azure.storage.blob import ContainerClient
 
 def main():
     # Hard-coded date range
-    start_date = '2023-01-01'
-    end_date = '2024-12-31'
+    start_date = '2024-01-01'
+    end_date = '2025-12-31'
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Feature engineering script for Octopus Energy data')
@@ -45,14 +45,23 @@ def main():
     
     df = pd.read_sql(query, engine)
     
+    # Group by date. sum consumption, mean temperature, and mean precipitation
+    df = df.groupby(df['hour_start'].dt.date).agg({
+        'consumption': 'sum',
+        'temperature_2m': 'mean',
+        'precipitation': 'mean'
+    }).reset_index().rename(columns={'hour_start': 'date'})
+
     # Feature engineering
     # Create time-based features
-    df['day_of_week'] = pd.to_datetime(df['hour_start']).dt.dayofweek
+    df['day_of_week'] = pd.to_datetime(df['date']).dt.dayofweek
     
     
     
     # Drop rows with NaN values (from lag and rolling calculations)
-    df = df.dropna()
+    #df = df.dropna()
+    
+    df.set_index('date', inplace=True)
     
     # Write to temporary location
     output = df.to_csv (index_label="idx", encoding = "utf-8")
