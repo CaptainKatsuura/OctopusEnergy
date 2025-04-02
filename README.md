@@ -48,7 +48,10 @@ The DAG, `octopus_consumption`, is scheduled to run hourly and consists of the f
 
 - **Data Ingestion**: Automates the extraction of electricity consumption and weather data from APIs.
 - **Data Transformation**: Performs feature engineering to create time-based and weather-related features.
-- **Model Training**: Uses feature-engineered data to train forecasting models.
+- **Model Training**:
+  - **Linear Regression**: A simple baseline model for forecasting.
+  - **SARIMAX**: A more advanced time-series forecasting model that supports exogenous variables.
+  - **Genetic Algorithm for Feature Selection**: Optimizes feature selection for both models by minimizing the root mean squared error (RMSE).
 - **Cloud Integration**: Stores processed data and model outputs in Azure Blob Storage.
 
 ## Prerequisites
@@ -90,6 +93,7 @@ PortfolioProjects/
 │   │   ├── fe_2.py
 │   ├── model_training/
 │   │   ├── linreg.py
+│   │   ├── sarimax.py
 ```
 
 ## Future Enhancements
@@ -97,7 +101,7 @@ PortfolioProjects/
 - Add additional forecasting models.
 - Implement real-time data streaming for consumption and weather data.
 - Enhance error handling and logging for better monitoring.
-- Add performance reporting pipelines
+- Add performance reporting pipelines.
 
 ## Contact
 

@@ -217,8 +217,8 @@ def octopus_consumption():
         model_scripts_dir = os.path.join(os.path.abspath("/opt/airflow"), "dags", "PortfolioProjects", "OctopusEnergy", "model_training")
         model_scripts = [os.path.splitext(f)[0] for f in os.listdir(model_scripts_dir) if f.endswith(".py")]
         print(f"Model scripts: {model_scripts}")
-        model_files = wasb_hook.get_blobs_list(container_name="octopusenergy", prefix="models/")
-        existing_model_paths = [os.path.splitext("/".join(f.split('/')[-2:]))[0] for f in model_files]
+        model_files = wasb_hook.get_blobs_list_recursive(container_name="octopusenergy", prefix="models/")
+        existing_model_paths = [os.path.splitext(f"{f.split('/')[-2]}/{f.split('/')[-1]}")[0] for f in model_files]
         print(f"Existing model paths: {existing_model_paths}")
         fe_files = wasb_hook.get_blobs_list(container_name="octopusenergy", prefix="fe/")
         fe_file_names = list(set([os.path.splitext(f.split('/')[-1])[0] for f in fe_files]))

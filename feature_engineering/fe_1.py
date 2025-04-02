@@ -26,21 +26,43 @@ def main():
     
     # Select data - aggregate hourly consumption and join with weather
     query = f"""
+    WITH hourly_data AS (
+        SELECT 
+            date_trunc('hour', e.interval_start) AS hour_start,
+            date_trunc('day', e.interval_start) AS day_start,
+            SUM(e.consumption) AS consumption,
+            w.temperature_2m,
+            w.precipitation
+        FROM 
+            public.octopus_electricity e
+        LEFT JOIN 
+            public.historic_weather w ON date_trunc('hour', e.interval_start) = w.time_start
+        WHERE 
+            e.interval_start BETWEEN '{start_date}' AND '{end_date}'
+        GROUP BY 
+            date_trunc('hour', e.interval_start), date_trunc('day', e.interval_start), w.temperature_2m, w.precipitation
+    ),
+    valid_days AS (
+        SELECT 
+            day_start
+        FROM 
+            hourly_data
+        GROUP BY 
+            day_start
+        HAVING 
+            COUNT(hour_start) = 24 -- Only include days with a full 24 hours of data
+    )
     SELECT 
-        date_trunc('hour', e.interval_start) as hour_start,
-        SUM(e.consumption) as consumption,
-        w.temperature_2m,
-        w.precipitation
+        hd.hour_start,
+        hd.consumption,
+        hd.temperature_2m,
+        hd.precipitation
     FROM 
-        public.octopus_electricity e
-    LEFT JOIN 
-        public.historic_weather w ON date_trunc('hour', e.interval_start) = w.time_start
-    WHERE 
-        e.interval_start BETWEEN '{start_date}' AND '{end_date}'
-    GROUP BY 
-        date_trunc('hour', e.interval_start), w.temperature_2m, w.precipitation
+        hourly_data hd
+    JOIN 
+        valid_days vd ON hd.day_start = vd.day_start
     ORDER BY 
-        date_trunc('hour', e.interval_start) ASC
+        hd.hour_start ASC;
     """
     
     df = pd.read_sql(query, engine)

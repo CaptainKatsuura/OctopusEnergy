@@ -1,5 +1,6 @@
 import pygad
 import numpy as np
+import pickle
 from sktime.forecasting.sarimax import SARIMAX
 from sktime.split import ExpandingWindowSplitter
 from sktime.performance_metrics.forecasting import MeanSquaredError
@@ -175,6 +176,9 @@ def main():
     y_pred = y_pred.to_string(index=True)
     
     blob_block.upload_blob(f'models/{args.output_path}.csv', y_pred, overwrite=True, encoding='utf-8')
+    model_bytes = pickle.dumps(model)
+    # Upload the serialized model to Azure Blob Storage
+    blob_block.upload_blob(f'models/{args.output_path}.pkl', model_bytes, overwrite=True)
 
 if __name__ == "__main__":
     main()

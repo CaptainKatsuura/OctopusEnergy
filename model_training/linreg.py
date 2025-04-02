@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import argparse
 import os
+import pickle
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import root_mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
@@ -110,6 +111,9 @@ def main():
     y_pred_df['test'] = y_test.loc[:,args.target]
     y_pred_csv = y_pred_df.to_csv(index=True)
     blob_block.upload_blob(f'models/{args.output_path}.csv', y_pred_csv, overwrite=True, encoding='utf-8')
-
+    model_bytes = pickle.dumps(model)
+    # Upload the serialized model to Azure Blob Storage
+    blob_block.upload_blob(f'models/{args.output_path}.pkl', model_bytes, overwrite=True)
+    
 if __name__ == "__main__":
     main()
