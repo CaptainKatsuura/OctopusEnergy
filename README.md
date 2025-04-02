@@ -1,6 +1,6 @@
 # Octopus Energy Forecasting DAG
 
-This project contains an Airflow DAG designed to process Octopus Energy consumption and weather data, perform feature engineering, and train forecasting models. The DAG automates the end-to-end pipeline for data ingestion, transformation, and model training.
+This project is a **proof of concept (PoC)** DAG designed to demonstrate how Apache Airflow can orchestrate MLOps workflows. The DAG automates the end-to-end pipeline for data ingestion, transformation, feature engineering, and model training using Octopus Energy consumption and weather data.
 
 ## DAG Overview
 
@@ -46,6 +46,7 @@ The DAG, `octopus_consumption`, is scheduled to run hourly and consists of the f
 
 ## Key Features
 
+- **MLOps Orchestration**: Demonstrates how Airflow can be used to orchestrate MLOps workflows, including data ingestion, transformation, and model training.
 - **Data Ingestion**: Automates the extraction of electricity consumption and weather data from APIs.
 - **Data Transformation**: Performs feature engineering to create time-based and weather-related features.
 - **Model Training**:
