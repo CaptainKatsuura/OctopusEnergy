@@ -4,6 +4,8 @@ This project is a **proof of concept (PoC)** DAG designed to demonstrate how Apa
 
 ## DAG Overview
 
+![alt text](image.png)
+
 The DAG, `octopus_consumption`, is scheduled to run hourly and consists of the following tasks:
 
 ### 1. **Get Latest Interval Start for Electricity Consumption**
